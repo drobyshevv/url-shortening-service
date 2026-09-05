@@ -29,16 +29,20 @@ func NewApp(log *slog.Logger, cfg *config.Config) (*App, error) {
 	}
 	r := postgres.NewUrlRepository(pool)
 	s := service.NewServiceUrl(r)
-	h := handler.NewUrlHandler(s, log)
+
+	hr := handler.NewUrlHandlerReader(s, log)
+	hw := handler.NewUrlHandlerWriter(s, log)
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /shorten", h.PostUrl)
-	mux.HandleFunc("GET /shorten/{code}", h.GetUrl)
-	mux.HandleFunc("PUT /shorten/{code}", h.PutUrl)
-	mux.HandleFunc("DELETE /shorten/{code}", h.DeleteUrl)
-	mux.HandleFunc("GET /shorten/{code}/stats", h.GetUrlStatistics)
-	mux.HandleFunc("GET /shorten/{code}/redirect", h.RedirectUrl)
+	mux.HandleFunc("POST /shorten", hw.PostUrl)
+	mux.HandleFunc("PUT /shorten/{code}", hw.PutUrl)
+	mux.HandleFunc("DELETE /shorten/{code}", hw.DeleteUrl)
+
+	mux.HandleFunc("GET /shorten/{code}", hr.GetUrl)
+	mux.HandleFunc("GET /shorten/{code}/stats", hr.GetUrlStatistics)
+	mux.HandleFunc("GET /shorten/{code}/redirect", hr.RedirectUrl)
+	mux.HandleFunc("GET /shorten/urls", hr.GetAllUrlsWithStatistics)
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Srv.Port),

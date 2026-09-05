@@ -80,6 +80,8 @@ func (s *ServiceUrl) GetUrlStatistics(ctx context.Context, code string) (*model.
 	return resp, nil
 }
 
+func (s *ServiceUrl) GetAllUrlsWithStatistics(context.Context, string) ([]model.UrlStats, error)
+
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func randStringBytesRmndr() string {

@@ -13,7 +13,7 @@ const (
 	ProblemNotFound        = "https://example.com/problems/not-found"
 	ProblemConflict        = "https://example.com/problems/conflict"
 	ProblemInvalidJSONBody = "https://example.com/problems/invalid-json-body"
-	PriblemInternal        = "https://example.com/problems/internal-error"
+	ProblemInternal        = "https://example.com/problems/internal-error"
 )
 
 type ErrorResponse struct {

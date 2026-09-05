@@ -11,22 +11,40 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type UrlService interface {
+type UrlServiceWriter interface {
 	PostUrl(context.Context, string) (*model.Url, error)
-	GetUrl(context.Context, string) (*model.Url, error)
 	PutUrl(context.Context, string, string) (*model.Url, error)
 	DeleteUrl(context.Context, string) error
-	GetUrlStatistics(context.Context, string) (*model.UrlStats, error)
 }
 
-type UrlHandler struct {
-	service  UrlService
+type UrlServiceReader interface {
+	GetUrl(context.Context, string) (*model.Url, error)
+	GetUrlStatistics(context.Context, string) (*model.UrlStats, error)
+	GetAllUrlsWithStatistics(context.Context, string) ([]model.UrlStats, error)
+}
+
+type UrlHandlerReader struct {
+	service  UrlServiceReader
 	validate *validator.Validate
 	log      *slog.Logger
 }
 
-func NewUrlHandler(service UrlService, log *slog.Logger) *UrlHandler {
-	return &UrlHandler{
+type UrlHandlerWriter struct {
+	service  UrlServiceWriter
+	validate *validator.Validate
+	log      *slog.Logger
+}
+
+func NewUrlHandlerReader(service UrlServiceReader, log *slog.Logger) *UrlHandlerReader {
+	return &UrlHandlerReader{
+		service:  service,
+		validate: validator.New(),
+		log:      log,
+	}
+}
+
+func NewUrlHandlerWriter(service UrlServiceWriter, log *slog.Logger) *UrlHandlerWriter {
+	return &UrlHandlerWriter{
 		service:  service,
 		validate: validator.New(),
 		log:      log,
@@ -37,7 +55,7 @@ type CreateOrUpdateURLRequest struct {
 	Url string `json:"url" validate:"required,url"`
 }
 
-func (h *UrlHandler) PostUrl(w http.ResponseWriter, r *http.Request) {
+func (h *UrlHandlerWriter) PostUrl(w http.ResponseWriter, r *http.Request) {
 	var req CreateOrUpdateURLRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -80,7 +98,7 @@ func (h *UrlHandler) PostUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("failed to create url", "url", req.Url, "error", err)
 		writeError(
 			w,
-			model.PriblemInternal,
+			model.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -95,7 +113,7 @@ func (h *UrlHandler) PostUrl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *UrlHandler) GetUrl(w http.ResponseWriter, r *http.Request) {
+func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
 	err := h.validate.Var(code, "required,len=8,alphanum")
@@ -127,7 +145,7 @@ func (h *UrlHandler) GetUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("failed to get url", "code", code, "error", err)
 		writeError(
 			w,
-			model.PriblemInternal,
+			model.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -142,14 +160,15 @@ func (h *UrlHandler) GetUrl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *UrlHandler) GetAllUrlsWithStatistics(w http.ResponseWriter, r *http.Request) {
+func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *http.Request) {
 	//get all urls
+
 	//validation structs
 	//decode
 	//response
 }
 
-func (h *UrlHandler) PutUrl(w http.ResponseWriter, r *http.Request) {
+func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
 	if err := h.validate.Var(code, "required,len=8,alphanum"); err != nil {
@@ -211,7 +230,7 @@ func (h *UrlHandler) PutUrl(w http.ResponseWriter, r *http.Request) {
 		)
 		writeError(
 			w,
-			model.PriblemInternal,
+			model.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -226,7 +245,7 @@ func (h *UrlHandler) PutUrl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *UrlHandler) DeleteUrl(w http.ResponseWriter, r *http.Request) {
+func (h *UrlHandlerWriter) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
 	if err := h.validate.Var(code, "required,len=8,alphanum"); err != nil {
@@ -261,7 +280,7 @@ func (h *UrlHandler) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 		)
 		writeError(
 			w,
-			model.PriblemInternal,
+			model.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -272,7 +291,7 @@ func (h *UrlHandler) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *UrlHandler) GetUrlStatistics(w http.ResponseWriter, r *http.Request) {
+func (h *UrlHandlerReader) GetUrlStatistics(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
 	if err := h.validate.Var(code, "required,len=8,alphanum"); err != nil {
@@ -301,7 +320,7 @@ func (h *UrlHandler) GetUrlStatistics(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(
 			w,
-			model.PriblemInternal,
+			model.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -316,7 +335,7 @@ func (h *UrlHandler) GetUrlStatistics(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *UrlHandler) RedirectUrl(w http.ResponseWriter, r *http.Request) {
+func (h *UrlHandlerReader) RedirectUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
 	if err := h.validate.Var(code, "required,len=8,alphanum"); err != nil {
@@ -345,7 +364,7 @@ func (h *UrlHandler) RedirectUrl(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(
 			w,
-			model.PriblemInternal,
+			model.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
