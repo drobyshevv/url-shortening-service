@@ -1,0 +1,13 @@
+-- +goose Up
+
+CREATE TABLE IF NOT EXISTS urls (
+    id BIGSERIAL PRIMARY KEY,
+    url TEXT NOT NULL,
+    short_code VARCHAR(8) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- +goose Down
+
+DROP TABLE IF EXISTS urls;
