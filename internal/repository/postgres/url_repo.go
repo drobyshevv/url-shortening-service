@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
+	"github.com/drobyshevv/url-shortening-service/internal/errs"
 	"github.com/drobyshevv/url-shortening-service/internal/model"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,8 +20,8 @@ func NewUrlRepository(pool *pgxpool.Pool) *UrlRepository {
 	}
 }
 
-func (r *UrlRepository) Create(ctx context.Context, url string, code string) (*model.Url, error) {
-	var result model.Url
+func (r *UrlRepository) Create(ctx context.Context, url string, code string) (*model.ShortLink, error) {
+	var result model.ShortLink
 
 	row := r.pool.QueryRow(ctx, `
 	INSERT INTO urls (short_code, url)
@@ -40,8 +43,8 @@ func (r *UrlRepository) Create(ctx context.Context, url string, code string) (*m
 	return &result, nil
 }
 
-func (r *UrlRepository) Get(ctx context.Context, code string) (*model.Url, error) {
-	var result model.Url
+func (r *UrlRepository) Get(ctx context.Context, code string) (*model.ShortLink, error) {
+	var result model.ShortLink
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, url, short_code, created_at, updated_at
@@ -55,14 +58,17 @@ func (r *UrlRepository) Get(ctx context.Context, code string) (*model.Url, error
 		&result.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errs.ErrNotFound
+		}
 		return nil, err
 	}
 
 	return &result, nil
 }
 
-func (r *UrlRepository) Update(ctx context.Context, code string, url string) (*model.Url, error) {
-	var result model.Url
+func (r *UrlRepository) Update(ctx context.Context, code string, url string) (*model.ShortLink, error) {
+	var result model.ShortLink
 
 	err := r.pool.QueryRow(ctx, `
 		UPDATE urls
@@ -77,6 +83,9 @@ func (r *UrlRepository) Update(ctx context.Context, code string, url string) (*m
 		&result.UpdatedAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errs.ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -93,7 +102,7 @@ func (r *UrlRepository) Delete(ctx context.Context, code string) error {
 	}
 
 	if tag.RowsAffected() == 0 {
-		return model.ErrNotFound
+		return errs.ErrNotFound
 	}
 
 	return nil
@@ -115,6 +124,9 @@ func (r *UrlRepository) GetStatistics(ctx context.Context, code string) (*model.
 		&result.AccessCount,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errs.ErrNotFound
+		}
 		return nil, err
 	}
 
@@ -137,4 +149,57 @@ func (r *UrlRepository) ExistsByURL(ctx context.Context, url string) (bool, erro
 	}
 
 	return exists, nil
+}
+
+func (r *UrlRepository) TotalItems(ctx context.Context) (int, error) {
+	var totalItems int
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM urls
+	`).Scan(&totalItems)
+	if err != nil {
+		return 0, err
+	}
+
+	return totalItems, err
+}
+
+func (r *UrlRepository) GetPage(ctx context.Context, pageSize int, offset int) ([]model.UrlStats, error) {
+	query := `
+		SELECT id, url, short_code, created_at, updated_at, access_count
+		FROM urls
+		ORDER BY created_at DESC 
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := r.pool.Query(ctx, query, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]model.UrlStats, 0)
+	for rows.Next() {
+		var item model.UrlStats
+		err := rows.Scan(
+			&item.ID,
+			&item.Url,
+			&item.ShortCode,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+			&item.AccessCount,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }

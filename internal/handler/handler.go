@@ -6,21 +6,23 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
+	"github.com/drobyshevv/url-shortening-service/internal/errs"
 	"github.com/drobyshevv/url-shortening-service/internal/model"
 	"github.com/go-playground/validator/v10"
 )
 
 type UrlServiceWriter interface {
-	PostUrl(context.Context, string) (*model.Url, error)
-	PutUrl(context.Context, string, string) (*model.Url, error)
+	PostUrl(context.Context, string) (*model.ShortLink, error)
+	PutUrl(context.Context, string, string) (*model.ShortLink, error)
 	DeleteUrl(context.Context, string) error
 }
 
 type UrlServiceReader interface {
-	GetUrl(context.Context, string) (*model.Url, error)
+	GetUrl(context.Context, string) (*model.ShortLink, error)
 	GetUrlStatistics(context.Context, string) (*model.UrlStats, error)
-	GetAllUrlsWithStatistics(context.Context, string) ([]model.UrlStats, error)
+	GetAllUrlsWithStatistics(context.Context, int, int) ([]model.UrlStats, error)
 }
 
 type UrlHandlerReader struct {
@@ -55,13 +57,18 @@ type CreateOrUpdateURLRequest struct {
 	Url string `json:"url" validate:"required,url"`
 }
 
+type GetUrlsQuery struct {
+	Page     int `validate:"omitempty,min=1"`
+	PageSize int `validate:"omitempty,min=1,max=100"`
+}
+
 func (h *UrlHandlerWriter) PostUrl(w http.ResponseWriter, r *http.Request) {
 	var req CreateOrUpdateURLRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(
 			w,
-			model.ProblemInvalidJSONBody,
+			errs.ProblemInvalidJSONBody,
 			"invalid json body",
 			http.StatusBadRequest,
 			"request body contains invalid JSON",
@@ -74,7 +81,7 @@ func (h *UrlHandlerWriter) PostUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("invalid request body", "error", err)
 		writeError(
 			w,
-			model.ProblemValidation,
+			errs.ProblemValidation,
 			"validation error",
 			http.StatusBadRequest,
 			"request body contains invalid data",
@@ -84,11 +91,11 @@ func (h *UrlHandlerWriter) PostUrl(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.service.PostUrl(r.Context(), req.Url)
 	if err != nil {
-		if errors.Is(err, model.ErrAlreadyExists) {
+		if errors.Is(err, errs.ErrAlreadyExists) {
 			h.log.Info("url already exists", "url", req.Url)
 			writeError(
 				w,
-				model.ProblemConflict,
+				errs.ProblemConflict,
 				"status conflict",
 				http.StatusConflict,
 				"url already exists",
@@ -98,7 +105,7 @@ func (h *UrlHandlerWriter) PostUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("failed to create url", "url", req.Url, "error", err)
 		writeError(
 			w,
-			model.ProblemInternal,
+			errs.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -121,7 +128,7 @@ func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("invalid code", "code", code, "error", err)
 		writeError(
 			w,
-			model.ProblemValidation,
+			errs.ProblemValidation,
 			"validation error",
 			http.StatusBadRequest,
 			"code must contain exactly 8 alphanumeric characters",
@@ -131,11 +138,11 @@ func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.service.GetUrl(r.Context(), code)
 	if err != nil {
-		if errors.Is(err, model.ErrNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			h.log.Info("url not found", "code", code)
 			writeError(
 				w,
-				model.ProblemNotFound,
+				errs.ProblemNotFound,
 				"not found",
 				http.StatusNotFound,
 				"URL not found",
@@ -145,7 +152,7 @@ func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Error("failed to get url", "code", code, "error", err)
 		writeError(
 			w,
-			model.ProblemInternal,
+			errs.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -161,11 +168,58 @@ func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *http.Request) {
-	//get all urls
+	query := GetUrlsQuery{
+		Page:     1,
+		PageSize: 20,
+	}
 
-	//validation structs
-	//decode
-	//response
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		query.Page, _ = strconv.Atoi(pageStr)
+	}
+
+	if pageSizeStr := r.URL.Query().Get("page_size"); pageSizeStr != "" {
+		query.PageSize, _ = strconv.Atoi(pageSizeStr)
+	}
+
+	if err := h.validate.Struct(query); err != nil {
+		h.log.Error("failed to convert query param", "error", err)
+		writeError(
+			w,
+			errs.ProblemValidation,
+			"validation error",
+			http.StatusBadRequest,
+			"invalid pagination parameters. 'page' must be >= 1, 'page_size' must be 1-100",
+		)
+		return
+	}
+
+	resp, err := h.service.GetAllUrlsWithStatistics(r.Context(), query.Page, query.PageSize)
+	if err != nil {
+		if errors.Is(err, errs.ErrNotFound) {
+			h.log.Info("urls not found")
+			writeError(
+				w,
+				errs.ProblemNotFound,
+				"not found",
+				http.StatusNotFound,
+				"URLs not found",
+			)
+			return
+		}
+		h.log.Error("failed to get urls", "error", err)
+		writeError(
+			w,
+			errs.ProblemInternal,
+			"internal server error",
+			http.StatusInternalServerError,
+			"an internal server error occurred",
+		)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		h.log.Error("failed to encode json", "error", err)
+	}
 }
 
 func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +229,7 @@ func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("invalid short code", "code", code, "error", err)
 		writeError(
 			w,
-			model.ProblemValidation,
+			errs.ProblemValidation,
 			"validation error",
 			http.StatusBadRequest,
 			"code must contain exactly 8 alphanumeric characters",
@@ -189,7 +243,7 @@ func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("invalid json body", "error", err)
 		writeError(
 			w,
-			model.ProblemInvalidJSONBody,
+			errs.ProblemInvalidJSONBody,
 			"invalid json body",
 			http.StatusBadRequest,
 			"request body contains invalid JSON",
@@ -202,7 +256,7 @@ func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("invalid request body", "error", err)
 		writeError(
 			w,
-			model.ProblemValidation,
+			errs.ProblemValidation,
 			"validation error",
 			http.StatusBadRequest,
 			"request body contains invalid data",
@@ -212,11 +266,11 @@ func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.service.PutUrl(r.Context(), code, req.Url)
 	if err != nil {
-		if errors.Is(err, model.ErrNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			h.log.Info("url not found", "code", code)
 			writeError(
 				w,
-				model.ProblemNotFound,
+				errs.ProblemNotFound,
 				"not found",
 				http.StatusNotFound,
 				"URL not found",
@@ -230,7 +284,7 @@ func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 		)
 		writeError(
 			w,
-			model.ProblemInternal,
+			errs.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -252,7 +306,7 @@ func (h *UrlHandlerWriter) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("invalid short code", "code", code, "error", err)
 		writeError(
 			w,
-			model.ProblemValidation,
+			errs.ProblemValidation,
 			"validation error",
 			http.StatusBadRequest,
 			"code must contain exactly 8 alphanumeric characters",
@@ -262,11 +316,11 @@ func (h *UrlHandlerWriter) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 
 	err := h.service.DeleteUrl(r.Context(), code)
 	if err != nil {
-		if errors.Is(err, model.ErrNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			h.log.Info("url not found", "code", code)
 			writeError(
 				w,
-				model.ProblemNotFound,
+				errs.ProblemNotFound,
 				"not found",
 				http.StatusNotFound,
 				"URL not found",
@@ -280,7 +334,7 @@ func (h *UrlHandlerWriter) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 		)
 		writeError(
 			w,
-			model.ProblemInternal,
+			errs.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -297,7 +351,7 @@ func (h *UrlHandlerReader) GetUrlStatistics(w http.ResponseWriter, r *http.Reque
 	if err := h.validate.Var(code, "required,len=8,alphanum"); err != nil {
 		writeError(
 			w,
-			model.ProblemValidation,
+			errs.ProblemValidation,
 			"validation error",
 			http.StatusBadRequest,
 			"code must contain exactly 8 alphanumeric characters",
@@ -307,11 +361,11 @@ func (h *UrlHandlerReader) GetUrlStatistics(w http.ResponseWriter, r *http.Reque
 
 	resp, err := h.service.GetUrlStatistics(r.Context(), code)
 	if err != nil {
-		if errors.Is(err, model.ErrNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			h.log.Info("url not found", "code", code)
 			writeError(
 				w,
-				model.ProblemNotFound,
+				errs.ProblemNotFound,
 				"not found",
 				http.StatusNotFound,
 				"URL not found",
@@ -320,7 +374,7 @@ func (h *UrlHandlerReader) GetUrlStatistics(w http.ResponseWriter, r *http.Reque
 		}
 		writeError(
 			w,
-			model.ProblemInternal,
+			errs.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -342,7 +396,7 @@ func (h *UrlHandlerReader) RedirectUrl(w http.ResponseWriter, r *http.Request) {
 		h.log.Warn("invalid short code", "error", err)
 		writeError(
 			w,
-			model.ProblemValidation,
+			errs.ProblemValidation,
 			"validation error",
 			http.StatusBadRequest,
 			"code must contain exactly 8 alphanumeric characters",
@@ -352,10 +406,10 @@ func (h *UrlHandlerReader) RedirectUrl(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.service.GetUrl(r.Context(), code)
 	if err != nil {
-		if errors.Is(err, model.ErrNotFound) {
+		if errors.Is(err, errs.ErrNotFound) {
 			writeError(
 				w,
-				model.ProblemNotFound,
+				errs.ProblemNotFound,
 				"not found",
 				http.StatusNotFound,
 				"URL not found",
@@ -364,7 +418,7 @@ func (h *UrlHandlerReader) RedirectUrl(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(
 			w,
-			model.ProblemInternal,
+			errs.ProblemInternal,
 			"internal server error",
 			http.StatusInternalServerError,
 			"an internal server error occurred",
@@ -379,7 +433,7 @@ func writeError(w http.ResponseWriter, typeError, title string, status int, deta
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 
-	json.NewEncoder(w).Encode(model.ErrorResponse{
+	json.NewEncoder(w).Encode(errs.ErrorResponse{
 		Type:   typeError,
 		Title:  title,
 		Status: status,

@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-type Url struct {
+type ShortLink struct {
 	ID        int64     `json:"id" validate:"required,gt=0"`
 	Url       string    `json:"url" validate:"required,url"`
 	ShortCode string    `json:"short_code" validate:"required,len=8,alphanum"`
@@ -11,6 +11,6 @@ type Url struct {
 }
 
 type UrlStats struct {
-	Url
+	ShortLink
 	AccessCount int64 `json:"access_count"`
 }
