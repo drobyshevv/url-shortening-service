@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/drobyshevv/url-shortening-service/internal/errs"
 	"github.com/drobyshevv/url-shortening-service/internal/model"
@@ -22,7 +23,7 @@ type UrlServiceWriter interface {
 type UrlServiceReader interface {
 	GetUrl(context.Context, string) (*model.ShortLink, error)
 	GetUrlStatistics(context.Context, string) (*model.UrlStats, error)
-	GetAllUrlsWithStatistics(context.Context, int, int) ([]model.UrlStats, error)
+	GetAllUrlsWithStatistics(context.Context, int, int, model.UrlFilter) ([]model.UrlStats, error)
 }
 
 type UrlHandlerReader struct {
@@ -168,20 +169,111 @@ func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *http.Request) {
-	query := GetUrlsQuery{
+	filter := model.UrlFilter{
+		Sort:    "date",
+		OrderBy: "asc",
+	}
+
+	if search := r.URL.Query().Get("search"); search != "" {
+		filter.Search = &search
+	}
+
+	if dateFrom := r.URL.Query().Get("date_from"); dateFrom != "" {
+		layout := "2006-01-02"
+		df, err := time.Parse(layout, dateFrom)
+		if err != nil {
+			writeError(
+				w,
+				errs.ProblemValidation,
+				"validation error",
+				http.StatusBadRequest,
+				"invalid 'date_from' format, use YYYY-MM-DD",
+			)
+			return
+		}
+		filter.DateFrom = &df
+	}
+
+	if dateTo := r.URL.Query().Get("date_to"); dateTo != "" {
+		layout := "2006-01-02"
+		dt, err := time.Parse(layout, dateTo)
+		if err != nil {
+			writeError(
+				w,
+				errs.ProblemValidation,
+				"validation error",
+				http.StatusBadRequest,
+				"invalid 'date_from' format, use YYYY-MM-DD",
+			)
+			return
+		}
+		filter.DateTo = &dt
+	}
+
+	if minClicks := r.URL.Query().Get("min_clicks"); minClicks != "" {
+		minClicksInt, err := strconv.Atoi(minClicks)
+		if err != nil {
+			writeError(
+				w,
+				errs.ProblemValidation,
+				"validation error",
+				http.StatusBadRequest,
+				"invalid 'min_clicks', must be an integer",
+			)
+			return
+		}
+		filter.MinClicks = &minClicksInt
+	}
+
+	if maxClicks := r.URL.Query().Get("max_clicks"); maxClicks != "" {
+		maxClicksInt, err := strconv.Atoi(maxClicks)
+		if err != nil {
+			writeError(
+				w,
+				errs.ProblemValidation,
+				"validation error",
+				http.StatusBadRequest,
+				"invalid 'max_clicks' , must be an integer",
+			)
+			return
+		}
+		filter.MaxClicks = &maxClicksInt
+	}
+
+	if sort := r.URL.Query().Get("sort"); sort != "" {
+		filter.Sort = sort
+	}
+
+	if orderBy := r.URL.Query().Get("order_by"); orderBy != "" {
+		filter.OrderBy = orderBy
+	}
+
+	if err := h.validate.Struct(filter); err != nil {
+		h.log.Error("failed to validate filter struct", "error", err)
+		writeError(
+			w,
+			errs.ProblemValidation,
+			"validation error",
+			http.StatusBadRequest,
+			"invalid filter parameters",
+		)
+		return
+	}
+
+	queryPagination := GetUrlsQuery{
 		Page:     1,
 		PageSize: 20,
 	}
 
 	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
-		query.Page, _ = strconv.Atoi(pageStr)
+		queryPagination.Page, _ = strconv.Atoi(pageStr)
 	}
 
 	if pageSizeStr := r.URL.Query().Get("page_size"); pageSizeStr != "" {
-		query.PageSize, _ = strconv.Atoi(pageSizeStr)
+		queryPagination.PageSize, _ = strconv.Atoi(pageSizeStr)
 	}
 
-	if err := h.validate.Struct(query); err != nil {
+	if err := h.validate.Struct(queryPagination); err != nil {
 		h.log.Error("failed to convert query param", "error", err)
 		writeError(
 			w,
@@ -193,7 +285,7 @@ func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *ht
 		return
 	}
 
-	resp, err := h.service.GetAllUrlsWithStatistics(r.Context(), query.Page, query.PageSize)
+	resp, err := h.service.GetAllUrlsWithStatistics(r.Context(), queryPagination.Page, queryPagination.PageSize, filter)
 	if err != nil {
 		if errors.Is(err, errs.ErrNotFound) {
 			h.log.Info("urls not found")

@@ -17,8 +17,8 @@ type UrlRepository interface {
 	GetStatistics(context.Context, string) (*model.UrlStats, error)
 	ExistsByURL(context.Context, string) (bool, error)
 	//Pagination
-	TotalItems(context.Context) (int, error)
-	GetPage(context.Context, int, int) ([]model.UrlStats, error)
+	TotalItems(context.Context, model.UrlFilter) (int, error)
+	GetPage(context.Context, int, int, model.UrlFilter) ([]model.UrlStats, error)
 }
 
 type ServiceUrl struct {
@@ -84,8 +84,8 @@ func (s *ServiceUrl) GetUrlStatistics(ctx context.Context, code string) (*model.
 	return resp, nil
 }
 
-func (s *ServiceUrl) GetAllUrlsWithStatistics(ctx context.Context, currentPage, pageSize int) ([]model.UrlStats, error) {
-	totalItems, err := s.repository.TotalItems(ctx)
+func (s *ServiceUrl) GetAllUrlsWithStatistics(ctx context.Context, currentPage, pageSize int, filter model.UrlFilter) ([]model.UrlStats, error) {
+	totalItems, err := s.repository.TotalItems(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (s *ServiceUrl) GetAllUrlsWithStatistics(ctx context.Context, currentPage, 
 		HasPrevPage: currentPage > 1,
 	}
 
-	items, err := s.repository.GetPage(ctx, pageSize, meta.Offset())
+	items, err := s.repository.GetPage(ctx, pageSize, meta.Offset(), filter)
 	if err != nil {
 		return nil, err
 	}

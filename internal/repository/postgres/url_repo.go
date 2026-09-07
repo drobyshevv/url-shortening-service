@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/drobyshevv/url-shortening-service/internal/errs"
 	"github.com/drobyshevv/url-shortening-service/internal/model"
@@ -151,13 +153,14 @@ func (r *UrlRepository) ExistsByURL(ctx context.Context, url string) (bool, erro
 	return exists, nil
 }
 
-func (r *UrlRepository) TotalItems(ctx context.Context) (int, error) {
+func (r *UrlRepository) TotalItems(ctx context.Context, filter model.UrlFilter) (int, error) {
+	query := `SELECT COUNT(*) FROM urls`
+
+	query, args := buildFilterQuery(query, filter)
+
 	var totalItems int
 
-	err := r.pool.QueryRow(ctx, `
-		SELECT COUNT(*)
-		FROM urls
-	`).Scan(&totalItems)
+	err := r.pool.QueryRow(ctx, query, args...).Scan(&totalItems)
 	if err != nil {
 		return 0, err
 	}
@@ -165,15 +168,33 @@ func (r *UrlRepository) TotalItems(ctx context.Context) (int, error) {
 	return totalItems, err
 }
 
-func (r *UrlRepository) GetPage(ctx context.Context, pageSize int, offset int) ([]model.UrlStats, error) {
+func (r *UrlRepository) GetPage(ctx context.Context, pageSize int, offset int, filter model.UrlFilter) ([]model.UrlStats, error) {
 	query := `
 		SELECT id, url, short_code, created_at, updated_at, access_count
-		FROM urls
-		ORDER BY created_at DESC 
-		LIMIT $1 OFFSET $2
-	`
+		FROM urls`
 
-	rows, err := r.pool.Query(ctx, query, pageSize, offset)
+	query, args := buildFilterQuery(query, filter)
+
+	sortColumn := "created_at"
+	if filter.Sort == "url" {
+		sortColumn = "url"
+	} else if filter.Sort == "short_code" {
+		sortColumn = "short_code"
+	} else if filter.Sort == "date" {
+		sortColumn = "created_at"
+	}
+
+	sortOrder := "DESC"
+	if filter.OrderBy == "asc" {
+		sortOrder = "ASC"
+	}
+
+	query += fmt.Sprintf(" ORDER BY %s %s LIMIT $%d OFFSET $%d",
+		sortColumn, sortOrder, len(args)+1, len(args)+2)
+
+	args = append(args, pageSize, offset)
+
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -202,4 +223,45 @@ func (r *UrlRepository) GetPage(ctx context.Context, pageSize int, offset int) (
 	}
 
 	return items, nil
+}
+
+func buildFilterQuery(query string, filter model.UrlFilter) (string, []any) {
+	var args []any
+	var conditions []string
+	argIndex := 1
+	if filter.Search != nil {
+		conditions = append(conditions, fmt.Sprintf("(url ILIKE $%d OR short_code ILIKE $%d)", argIndex, argIndex))
+		args = append(args, "%"+*filter.Search+"%")
+		argIndex++
+	}
+
+	if filter.DateFrom != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", argIndex))
+		args = append(args, *filter.DateFrom)
+		argIndex++
+	}
+
+	if filter.DateTo != nil {
+		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", argIndex))
+		args = append(args, *filter.DateTo)
+		argIndex++
+	}
+
+	if filter.MinClicks != nil {
+		conditions = append(conditions, fmt.Sprintf("access_count >= $%d", argIndex))
+		args = append(args, *filter.MinClicks)
+		argIndex++
+	}
+
+	if filter.MaxClicks != nil {
+		conditions = append(conditions, fmt.Sprintf("access_count <= $%d", argIndex))
+		args = append(args, *filter.MaxClicks)
+		argIndex++
+	}
+
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	return query, args
 }
