@@ -1,0 +1,319 @@
+basePath: /
+definitions:
+  errs.ErrorResponse:
+    properties:
+      detail:
+        type: string
+      status:
+        type: integer
+      title:
+        type: string
+      type:
+        type: string
+    type: object
+  handler.CreateOrUpdateURLRequest:
+    properties:
+      url:
+        type: string
+    required:
+    - url
+    type: object
+  model.ShortLink:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      short_code:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+    required:
+    - id
+    - short_code
+    - url
+    type: object
+  model.UrlStats:
+    properties:
+      access_count:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: integer
+      short_code:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+    required:
+    - id
+    - short_code
+    - url
+    type: object
+host: localhost:8080
+info:
+  contact:
+    name: API Support
+  description: API for creating and managing shortened URLs.
+  license:
+    name: MIT
+  title: URL Shortener API
+  version: "1.0"
+paths:
+  /shorten:
+    post:
+      consumes:
+      - application/json
+      description: Creates a shortened URL
+      parameters:
+      - description: URL to shorten
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateOrUpdateURLRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.ShortLink'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+      summary: Create short URL
+      tags:
+      - URLs
+  /shorten/{code}:
+    delete:
+      description: Deletes an existing shortened URL by its short code.
+      parameters:
+      - description: Short URL code
+        in: path
+        name: code
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+      summary: Delete short URL
+      tags:
+      - URLs
+    get:
+      description: Get a shortened URL
+      parameters:
+      - description: Short URL code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.ShortLink'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+      summary: Get short URL
+      tags:
+      - URLs
+    put:
+      consumes:
+      - application/json
+      description: Updates the destination URL of an existing shortened URL.
+      parameters:
+      - description: Short URL code
+        in: path
+        name: code
+        required: true
+        type: string
+      - description: Request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateOrUpdateURLRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.ShortLink'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+      summary: Update short URL
+      tags:
+      - URLs
+  /shorten/{code}/redirect:
+    get:
+      description: Redirects the client to the original URL associated with the short
+        code.
+      parameters:
+      - description: Short URL code
+        in: path
+        name: code
+        required: true
+        type: string
+      responses:
+        "302":
+          description: Found
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+      summary: Redirect to original URL
+      tags:
+      - URLs
+  /shorten/{code}/stats:
+    get:
+      description: Returns click statistics for an existing shortened URL.
+      parameters:
+      - description: Short URL code
+        in: path
+        name: code
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.UrlStats'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+      summary: Get URL statistics
+      tags:
+      - URLs
+  /shorten/urls:
+    get:
+      description: Returns a paginated list of shortened URLs with click statistics.
+        Supports filtering by search text, date range, and number of clicks, as well
+        as sorting.
+      parameters:
+      - description: Search URLs
+        in: query
+        name: search
+        type: string
+      - description: Filter by start date (YYYY-MM-DD)
+        in: query
+        name: date_from
+        type: string
+      - description: Filter by end date (YYYY-MM-DD)
+        in: query
+        name: date_to
+        type: string
+      - description: Minimum number of clicks
+        in: query
+        name: min_clicks
+        type: integer
+      - description: Maximum number of clicks
+        in: query
+        name: max_clicks
+        type: integer
+      - description: Field to sort by
+        in: query
+        name: sort
+        type: string
+      - description: Sort order
+        in: query
+        name: order_by
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Number of URLs per page
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.UrlStats'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/errs.ErrorResponse'
+      summary: Get all URLs with statistics
+      tags:
+      - URLs
+schemes:
+- http
+swagger: "2.0"

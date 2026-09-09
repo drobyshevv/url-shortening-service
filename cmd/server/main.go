@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/drobyshevv/url-shortening-service/cmd/server/docs"
+
 	apphttp "github.com/drobyshevv/url-shortening-service/internal/app"
 	"github.com/drobyshevv/url-shortening-service/internal/config"
 )
@@ -17,6 +19,18 @@ const (
 	envDev   = "dev"
 )
 
+// @title URL Shortener API
+// @version 1.0
+// @description API for creating and managing shortened URLs.
+
+// @contact.name API Support
+
+// @license.name MIT
+
+// @host localhost:8080
+// @BasePath /
+
+// @schemes http
 func main() {
 	cfg, err := config.MustLoad()
 	if err != nil {

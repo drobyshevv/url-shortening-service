@@ -63,6 +63,17 @@ type GetUrlsQuery struct {
 	PageSize int `validate:"omitempty,min=1,max=100"`
 }
 
+// PostUrl godoc
+// @Summary Create short URL
+// @Description Creates a shortened URL
+// @Tags URLs
+// @Accept json
+// @Produce json
+// @Param request body CreateOrUpdateURLRequest true "URL to shorten"
+// @Success 201 {object} model.ShortLink
+// @Failure 400 {object} errs.ErrorResponse
+// @Failure 500 {object} errs.ErrorResponse
+// @Router /shorten [post]
 func (h *UrlHandlerWriter) PostUrl(w http.ResponseWriter, r *http.Request) {
 	var req CreateOrUpdateURLRequest
 
@@ -121,6 +132,17 @@ func (h *UrlHandlerWriter) PostUrl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetUrl godoc
+// @Summary Get short URL
+// @Description Get a shortened URL
+// @Tags URLs
+// @Produce json
+// @Param code path string true "Short URL code"
+// @Success 200 {object} model.ShortLink
+// @Failure 400 {object} errs.ErrorResponse
+// @Failure 404 {object} errs.ErrorResponse
+// @Failure 500 {object} errs.ErrorResponse
+// @Router /shorten/{code} [get]
 func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
@@ -168,6 +190,25 @@ func (h *UrlHandlerReader) GetUrl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// GetAllUrlsWithStatistics godoc
+// @Summary Get all URLs with statistics
+// @Description Returns a paginated list of shortened URLs with click statistics. Supports filtering by search text, date range, and number of clicks, as well as sorting.
+// @Tags URLs
+// @Produce json
+// @Param search query string false "Search URLs"
+// @Param date_from query string false "Filter by start date (YYYY-MM-DD)"
+// @Param date_to query string false "Filter by end date (YYYY-MM-DD)"
+// @Param min_clicks query int false "Minimum number of clicks"
+// @Param max_clicks query int false "Maximum number of clicks"
+// @Param sort query string false "Field to sort by"
+// @Param order_by query string false "Sort order"
+// @Param page query int false "Page number"
+// @Param page_size query int false "Number of URLs per page"
+// @Success 200 {array} model.UrlStats
+// @Failure 400 {object} errs.ErrorResponse
+// @Failure 404 {object} errs.ErrorResponse
+// @Failure 500 {object} errs.ErrorResponse
+// @Router /shorten/urls [get]
 func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *http.Request) {
 	filter := model.UrlFilter{
 		Sort:    "date",
@@ -203,7 +244,7 @@ func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *ht
 				errs.ProblemValidation,
 				"validation error",
 				http.StatusBadRequest,
-				"invalid 'date_from' format, use YYYY-MM-DD",
+				"invalid 'date_to' format, use YYYY-MM-DD",
 			)
 			return
 		}
@@ -266,11 +307,35 @@ func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *ht
 	}
 
 	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
-		queryPagination.Page, _ = strconv.Atoi(pageStr)
+		page, err := strconv.Atoi(pageStr)
+		if err != nil {
+			writeError(
+				w,
+				errs.ProblemValidation,
+				"validation error",
+				http.StatusBadRequest,
+				"invalid 'page', must be an integer",
+			)
+			return
+		}
+
+		queryPagination.Page = page
 	}
 
 	if pageSizeStr := r.URL.Query().Get("page_size"); pageSizeStr != "" {
-		queryPagination.PageSize, _ = strconv.Atoi(pageSizeStr)
+		pageSize, err := strconv.Atoi(pageSizeStr)
+		if err != nil {
+			writeError(
+				w,
+				errs.ProblemValidation,
+				"validation error",
+				http.StatusBadRequest,
+				"invalid 'page_size', must be an integer",
+			)
+			return
+		}
+
+		queryPagination.PageSize = pageSize
 	}
 
 	if err := h.validate.Struct(queryPagination); err != nil {
@@ -309,11 +374,25 @@ func (h *UrlHandlerReader) GetAllUrlsWithStatistics(w http.ResponseWriter, r *ht
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		h.log.Error("failed to encode json", "error", err)
 	}
 }
 
+// PutUrl godoc
+// @Summary Update short URL
+// @Description Updates the destination URL of an existing shortened URL.
+// @Tags URLs
+// @Accept json
+// @Produce json
+// @Param code path string true "Short URL code"
+// @Param request body CreateOrUpdateURLRequest true "Request body"
+// @Success 200 {object} model.ShortLink
+// @Failure 400 {object} errs.ErrorResponse
+// @Failure 404 {object} errs.ErrorResponse
+// @Failure 500 {object} errs.ErrorResponse
+// @Router /shorten/{code} [put]
 func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
@@ -391,6 +470,16 @@ func (h *UrlHandlerWriter) PutUrl(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DeleteUrl godoc
+// @Summary Delete short URL
+// @Description Deletes an existing shortened URL by its short code.
+// @Tags URLs
+// @Param code path string true "Short URL code"
+// @Success 204
+// @Failure 400 {object} errs.ErrorResponse
+// @Failure 404 {object} errs.ErrorResponse
+// @Failure 500 {object} errs.ErrorResponse
+// @Router /shorten/{code} [delete]
 func (h *UrlHandlerWriter) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
@@ -437,6 +526,17 @@ func (h *UrlHandlerWriter) DeleteUrl(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetUrlStatistics godoc
+// @Summary Get URL statistics
+// @Description Returns click statistics for an existing shortened URL.
+// @Tags URLs
+// @Produce json
+// @Param code path string true "Short URL code"
+// @Success 200 {object} model.UrlStats
+// @Failure 400 {object} errs.ErrorResponse
+// @Failure 404 {object} errs.ErrorResponse
+// @Failure 500 {object} errs.ErrorResponse
+// @Router /shorten/{code}/stats [get]
 func (h *UrlHandlerReader) GetUrlStatistics(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 
@@ -481,6 +581,16 @@ func (h *UrlHandlerReader) GetUrlStatistics(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// RedirectUrl godoc
+// @Summary Redirect to original URL
+// @Description Redirects the client to the original URL associated with the short code.
+// @Tags URLs
+// @Param code path string true "Short URL code"
+// @Success 302
+// @Failure 400 {object} errs.ErrorResponse
+// @Failure 404 {object} errs.ErrorResponse
+// @Failure 500 {object} errs.ErrorResponse
+// @Router /shorten/{code}/redirect [get]
 func (h *UrlHandlerReader) RedirectUrl(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
 

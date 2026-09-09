@@ -12,6 +12,7 @@ import (
 	"github.com/drobyshevv/url-shortening-service/internal/repository/postgres"
 	"github.com/drobyshevv/url-shortening-service/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 type App struct {
@@ -43,6 +44,10 @@ func NewApp(log *slog.Logger, cfg *config.Config) (*App, error) {
 	mux.HandleFunc("GET /shorten/{code}/stats", hr.GetUrlStatistics)
 	mux.HandleFunc("GET /shorten/{code}/redirect", hr.RedirectUrl)
 	mux.HandleFunc("GET /shorten/urls", hr.GetAllUrlsWithStatistics)
+
+	mux.HandleFunc("/swagger/", httpSwagger.Handler(
+		httpSwagger.URL(fmt.Sprintf("http://localhost:%d/swagger/doc.json", cfg.Srv.Port)),
+	))
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Srv.Port),
