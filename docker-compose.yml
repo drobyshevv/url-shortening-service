@@ -1,15 +1,31 @@
 services:
+  url-shortener:
+    build: .
+    container_name: url-shortener
+    command: ["./server", "-config_path=config/dev.yaml"]
+    environment:
+      PASSWORD_DB: ${PASSWORD_DB}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
   postgres:
     image: postgres:18
     container_name: url-shortening-postgres
     environment:
       POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${PASSWORD_DB}
       POSTGRES_DB: url_shortening
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d url_shortening"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:

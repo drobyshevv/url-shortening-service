@@ -23,7 +23,7 @@ type DataBase struct {
 	Host     string `yaml:"host" env:"DB_HOST" env-default:"localhost"`
 	Port     int    `yaml:"port" env:"DB_PORT" env-default:"5432"`
 	User     string `yaml:"user" env:"DB_USER_NAME" env-default:"postgres"`
-	Password string `yaml:"password" env:"DB_PASSWORD"`
+	Password string `yaml:"password" env:"PASSWORD_DB"`
 	DBName   string `yaml:"db_name" env:"DB_NAME" env-default:"postgres"`
 	Sslmode  string `yaml:"ssl_mode" env:"DB_SSL_MODE" env-default:"disable"`
 }
